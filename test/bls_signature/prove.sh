@@ -1,0 +1,1 @@
+snarkjs groth16 prove hashToG1_1.zkey witness.wtns proof.json public.json -v
