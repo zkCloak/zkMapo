@@ -988,4 +988,32 @@ template BigMultShortLong2DUnequal(n, ka, kb, la, lb) {
     }
 }
 
+// 256-bit number to BE bits.
+// Input: k register, n-bit, LE
+
+template BigToBits(n,k){
+    signal input in[k];
+    signal output out[256];
+    
+    var MSBITS = 256 - (k-1)*n;
+
+    component mschunk = Num2Bits(MSBITS);
+    mschunk.in <== in[k-1];
+
+    component chunks[k-1];
+    for(var i = 0; i < k - 1; i++) {
+        chunks[i] = Num2Bits(n);
+        chunks[i].in <== in[i];
+    } 
+
+    // Convert to BE bits
+    
+    for(var i = 0; i < MSBITS; i++) {
+        out[i] <== mschunk.out[MSBITS - 1 - i];
+    }
+    for(var i = 0; i < k-1; i++) 
+        for(var j=0; j < n; j++) {
+            out[MSBITS + i * n + j] <== chunks[k-2-i].out[n-1-j];
+        }
+}
 

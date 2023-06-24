@@ -4,8 +4,119 @@ include "../primitives/fp2.circom";
 include "../primitives/subgroup_check.circom";
 include "../primitives/final_exp.circom";
 include "../primitives/pairing.circom";
+include "../primitives/sha256/sha256.circom";
 include "hash_to_G1.circom";
-include "../primitives/helpers/bn254_func.circom";
+include "aggregate_pubkeys.circom";
+
+// Inputs:
+//   - pubkeys in G2
+//   - weights each weight of public key 
+//   - bit_map The b-length bitmask for which pubkeys to include
+//   - hash as element of E(Fq),
+//     - hash[0][]: {keccak256(0x00,msg) || keccak256(0x01,msg)} mod p
+//     - hash[1][]: {keccak256(0x02,msg) || keccak256(0x03,msg)} mod p
+//   - signature in G1
+template VerifyAggregatedSignature(b, n, k){
+    signal input pubkeys[b][2][2][k];
+    signal input weights[b];
+    signal input bit_map[b];
+
+    signal input signature[2][k];
+    signal input hash[2][k]; 
+    
+    signal input commitment;
+    
+    // check threshold
+    component check_threshold = CheckWeights(b);
+    for (var i = 0; i < b; i++) {
+        check_threshold.bit_map[i] <== bit_map[i];
+        check_threshold.weights[i] <== weights[i];
+    }
+
+    // Aggregate public keys
+    component aggregated_pubkey = AggregateG2s(b,n,k);
+    for (var cnt = 0; cnt < b; cnt++){
+        aggregated_pubkey.bit_map[cnt] <== bit_map[cnt];
+
+        for (var i = 0; i < 2; i++)
+            for (var j = 0; j < 2; j++)
+                for (var idx = 0; idx < k; idx++) {
+                    aggregated_pubkey.pubkeys[cnt][i][j][idx] <== pubkeys[cnt][i][j][idx];
+                }
+    }
+
+    // verify signature
+    component check_sig = VerifySignature(n,k);
+    for (var i = 0; i < 2; i++)
+        for (var j = 0; j < k; j++) {
+            check_sig.pubkey[0][i][j] <== aggregated_pubkey.out[0][i][j];
+            check_sig.pubkey[1][i][j] <== aggregated_pubkey.out[1][i][j];
+            check_sig.signature[i][j] <== signature[i][j];
+            check_sig.hash[i][j] <== hash[i][j];
+        }
+
+    // compute validator commitment 
+    // sha256(pk[0].x.c0, pk[0].x.c1, pk[0].y.c0, pk[0].y.c1, pk[0].weight,...,pk[b-1].x, pk[b-1].y, pk[b-1].weight)
+    // c0,c1 256-bit BE, weight 256-bit BE
+    // Input of sha256 (256 * 5 * b) bits
+    component xybits[4*b];
+    for(var i = 0; i < b; i++)
+        for(var x_or_y = 0; x_or_y < 2; x_or_y++)
+            for(var c0_or_c1 = 0; c0_or_c1 < 2; c0_or_c1++){
+                xybits[i*4 + x_or_y*2 + c0_or_c1] = BigToBits(n,k);
+                    for(var j = 0; j < k; j++) {
+                        xybits[i*4 + x_or_y*2 + c0_or_c1].in[j] <== pubkeys[i][x_or_y][c0_or_c1][j];
+                    }
+            }
+
+    // LE bits, and convert to BE bits later.
+    component wbits[b];
+    for(var i = 0; i < b; i++) {
+        wbits[i] = NumTo256Bits(32);
+        wbits[i].in <== weights[i]; 
+    }
+
+    // Now it's time to sha256
+    component validators_commitment = Sha256(b*256*5);
+    for(var i = 0; i < b; i++) {
+        for(var j = 0; j < 4; j++)
+            for(var idx = 0; idx < 256; idx++){
+                validators_commitment.in[1280*i + j * 256 + idx] <== xybits[i*4+j].out[idx];
+            }
+        for(var idx = 0; idx < 256; idx++) {
+            validators_commitment.in[1280*i + 1024 + idx] <== wbits[i].out[idx];
+        }
+    }
+
+    component hash_bits[2];
+    for(var i = 0; i < 2; i++){
+        hash_bits[i] = BigToBits(n,k);
+        for(var j = 0; j < k; j++) {
+            hash_bits[i].in[j] <== hash[i][j];
+        }
+    }
+
+    // hash_cm = sha256(t0, t1)
+    component hash_cm = Sha256(512);
+    for(var i = 0; i < 2; i++)
+        for(var j = 0; j < 256; j++)
+            hash_cm.in[i*256 + j] <== hash_bits[i].out[j];
+
+     // final_commitment = sha256(validators_commitment, hash_cm)
+    component final_commitment = Sha256(512);
+    for(var i = 0; i < 256; i++){
+        final_commitment.in[i] <== validators_commitment.out[i];
+        final_commitment.in[256 + i] <== hash_cm.out[i];
+    }
+    // Finally, we will remove the most significant 3 bits
+    // commitment.out[3..]
+    component out = Bits2Num(253);
+    for(var i = 0; i < 253; i++) {
+        out.in[i] <== final_commitment.out[255-i];
+    }
+
+    commitment === out.out;
+}
 
 // Inputs:
 //   - pubkey in G2
@@ -120,3 +231,17 @@ template VerifySignatureCore(n, k){
     out <== valid.out;
 }
 
+// n-bit number to 256 bits (BE)
+template NumTo256Bits(n){
+    signal input in;
+    signal output out[256];
+
+    component bits = Num2Bits(n);
+    bits.in <== in;
+    for(var i = 0; i < 256 - n; i++) {
+        out[i] <== 0;
+    }
+    for(var i = 0;i < n; i++) {
+        out[256 - n + i] <== bits.out[n-1-i];
+    }
+}
