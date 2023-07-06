@@ -56,7 +56,7 @@ template VerifyAggregatedSignature(b, n, k){
         }
 
     // compute validator commitment 
-    // sha256(pk[0].x.c0, pk[0].x.c1, pk[0].y.c0, pk[0].y.c1, pk[0].weight,...,pk[b-1].x, pk[b-1].y, pk[b-1].weight)
+    // sha256(pk[0].x.c1, pk[0].x.c0, pk[0].y.c1, pk[0].y.c0, pk[0].weight,...,pk[b-1].x, pk[b-1].y, pk[b-1].weight)
     // c0,c1 256-bit BE, weight 256-bit BE
     // Input of sha256 (256 * 5 * b) bits
     component xybits[4*b];
@@ -79,11 +79,11 @@ template VerifyAggregatedSignature(b, n, k){
     // Now it's time to sha256
     component validators_commitment = Sha256(b*256*5);
     for(var i = 0; i < b; i++) {
-        for(var j = 0; j < 4; j++)
-            for(var idx = 0; idx < 256; idx++){
-                validators_commitment.in[1280*i + j * 256 + idx] <== xybits[i*4+j].out[idx];
-            }
-        for(var idx = 0; idx < 256; idx++) {
+        for(var idx = 0; idx < 256; idx++){// {x.c1 || x.c0 || y.c1 || y.c0}
+            validators_commitment.in[1280*i + idx] <== xybits[i*4+1].out[idx];
+            validators_commitment.in[1280*i + 256 + idx] <== xybits[i*4].out[idx];
+            validators_commitment.in[1280*i + 512 + idx] <== xybits[i*4+3].out[idx];
+            validators_commitment.in[1280*i + 768 + idx] <== xybits[i*4+2].out[idx];
             validators_commitment.in[1280*i + 1024 + idx] <== wbits[i].out[idx];
         }
     }
