@@ -27,10 +27,10 @@ template VerifyAggregatedSignature(b, n, k){
     signal input commitment;
     
     // check threshold
-    component check_threshold = CheckWeights(b);
+    component check_weight = CheckWeights(b);
     for (var i = 0; i < b; i++) {
-        check_threshold.bit_map[i] <== bit_map[i];
-        check_threshold.weights[i] <== weights[i];
+        check_weight.bit_map[i] <== bit_map[i];
+        check_weight.weights[i] <== weights[i];
     }
 
     // Aggregate public keys
@@ -57,6 +57,7 @@ template VerifyAggregatedSignature(b, n, k){
 
     // compute validator commitment 
     // sha256(pk[0].x.c1, pk[0].x.c0, pk[0].y.c1, pk[0].y.c0, pk[0].weight,...,pk[b-1].x, pk[b-1].y, pk[b-1].weight)
+    // if weights[i] == 0, we select {pk[0].x.c1=0, pk[0].x.c0=0, pk[0].y.c1=0, pk[0].y.c0=0} to hash.
     // c0,c1 256-bit BE, weight 256-bit BE
     // Input of sha256 (256 * 5 * b) bits
     component xybits[4*b];
@@ -65,7 +66,7 @@ template VerifyAggregatedSignature(b, n, k){
             for(var c0_or_c1 = 0; c0_or_c1 < 2; c0_or_c1++){
                 xybits[i*4 + x_or_y*2 + c0_or_c1] = BigToBits(n,k);
                     for(var j = 0; j < k; j++) {
-                        xybits[i*4 + x_or_y*2 + c0_or_c1].in[j] <== pubkeys[i][x_or_y][c0_or_c1][j];
+                        xybits[i*4 + x_or_y*2 + c0_or_c1].in[j] <== (1 - check_weight.is_zero[i]) * pubkeys[i][x_or_y][c0_or_c1][j];
                     }
             }
 

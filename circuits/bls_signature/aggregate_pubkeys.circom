@@ -79,13 +79,28 @@ template AggregateG2s(b, n, k) {
 
 /*
  * Check the sum of weight >= 2/3*total_weights.
+ * Check bit_map[m..b] are 0, since weights[m..b] is 0, that is checked in the contract. 
  * @param  b The size of the set of public keys
  * @input  bit_map the flag marks whether public key is included in aggregated public key
  * @input  weights    each weight of public key
+ * @out isZero[b] each weight is 0 or not.
 */ 
 template CheckWeights(b){
     signal input bit_map[b];
     signal input weights[b];
+    signal output is_zero[b];
+
+    // check is zero
+    component is_w_zero[b];
+    for(var i = 0; i < b; i++) {
+        is_w_zero[i] = IsZero();
+        is_w_zero[i].in <== weights[i];
+    }
+
+    // check weights[i] == 0 => bit_map[i]==0
+    for(var i = 0; i < b; i++) {
+        is_w_zero[i].out * bit_map[i] === 0;
+    }
 
     // check bool 
     for(var i = 0; i < b; i++) {
@@ -109,4 +124,8 @@ template CheckWeights(b){
     is_geq.in[1] <== total_weights * 2;
 
     is_geq.out === 1; 
+
+    for(var i = 0; i < b; i++){
+        is_zero[i] <== is_w_zero[i].out;
+    }
 }
