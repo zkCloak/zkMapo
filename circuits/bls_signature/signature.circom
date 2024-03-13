@@ -147,7 +147,12 @@ template VerifySignature(n, k){
         lt[5].a[idx] <== signature[1][idx];
         lt[6].a[idx] <== hash[0][idx];
         lt[7].a[idx] <== hash[1][idx];
-    } 
+    }
+    var lt_out = 0;
+    for(var i = 0; i < 8; i++){
+        lt_out += lt[i].out;
+    }
+    lt_out === 8;  
 
     component check[4]; 
     for(var i=0; i<4; i++)

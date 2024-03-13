@@ -108,7 +108,7 @@ template CheckWeights(b){
     }
 
     signal sum[b];
-    sum[0] <== bit_map[0] * weights[1];
+    sum[0] <== bit_map[0] * weights[0];
     for (var i = 1; i < b; i++) {
         sum[i] <== sum[i-1] +  bit_map[i] * weights[i];
     }
